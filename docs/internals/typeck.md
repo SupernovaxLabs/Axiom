@@ -1,0 +1,3 @@
+# Typeck
+
+Bootstrap placeholder.

@@ -1,0 +1,16 @@
+[workspace]
+members = [
+  "compiler",
+  "runtime",
+  "std",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+authors = ["Axiom Core Team"]
+
+[workspace.dependencies]
+thiserror = "1"
