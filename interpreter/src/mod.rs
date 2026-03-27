@@ -1,1 +1,1 @@
-//! Bootstrap placeholder for `interpreter/src/mod.rs`.
+//! Legacy module entry point retained for bootstrap compatibility.
