@@ -6,6 +6,11 @@ pub enum Value {
     Bool(bool),
     Text(String),
     Array(Vec<Value>),
+    Range {
+        start: i64,
+        end: i64,
+        inclusive: bool,
+    },
     Nil,
 }
 
@@ -24,6 +29,17 @@ impl Value {
             Self::Number(n) => *n != 0.0,
             Self::Text(s) => !s.is_empty(),
             Self::Array(items) => !items.is_empty(),
+            Self::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                if *inclusive {
+                    start <= end
+                } else {
+                    start < end
+                }
+            }
             Self::Nil => false,
         }
     }
@@ -44,6 +60,17 @@ impl Display for Value {
                     write!(f, "{item}")?;
                 }
                 write!(f, "]")
+            }
+            Self::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                if *inclusive {
+                    write!(f, "{start}..={end}")
+                } else {
+                    write!(f, "{start}..{end}")
+                }
             }
             Self::Nil => write!(f, "nil"),
         }

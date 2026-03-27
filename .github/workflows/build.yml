@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build axiom-cli
+        run: cargo build --release -p axiom-cli
+
+      - name: Build axiom-interpreter
+        run: cargo build --release -p axiom-interpreter
+
+      - name: Upload artifacts (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiom-${{ runner.os }}
+          path: |
+            target/release/axiom-cli
+            target/release/axiom-interpreter
+
+      - name: Upload artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: axiom-${{ runner.os }}
+          path: |
+            target/release/axiom-cli.exe
+            target/release/axiom-interpreter.exe

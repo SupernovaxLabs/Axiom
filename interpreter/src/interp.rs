@@ -35,6 +35,8 @@ struct FunctionDef {
 enum ExecResult {
     Value(Value),
     Return(Value),
+    Break,
+    Continue,
 }
 
 pub struct Interpreter {
@@ -63,6 +65,14 @@ impl Interpreter {
             match self.eval_stmt(&stmt)? {
                 ExecResult::Value(v) => last = v,
                 ExecResult::Return(v) => return Ok(v),
+                ExecResult::Break => {
+                    return Err(InterpreterError::runtime("`break` used outside of a loop"));
+                }
+                ExecResult::Continue => {
+                    return Err(InterpreterError::runtime(
+                        "`continue` used outside of a loop",
+                    ));
+                }
             }
         }
         Ok(last)
@@ -120,10 +130,75 @@ impl Interpreter {
                     match self.eval_stmt(body)? {
                         ExecResult::Value(v) => last = v,
                         ExecResult::Return(v) => return Ok(ExecResult::Return(v)),
+                        ExecResult::Break => break,
+                        ExecResult::Continue => continue,
                     }
                 }
                 Ok(ExecResult::Value(last))
             }
+            Stmt::For { name, iter, body } => {
+                let iterable = self.eval_expr(iter)?;
+                let mut last = Value::Nil;
+                match iterable {
+                    Value::Array(items) => {
+                        for item in items {
+                            self.env.enter_scope();
+                            self.env.define(name.clone(), item, false);
+                            let step = self.eval_stmt(body);
+                            self.env.exit_scope();
+                            match step? {
+                                ExecResult::Value(v) => last = v,
+                                ExecResult::Return(v) => return Ok(ExecResult::Return(v)),
+                                ExecResult::Break => break,
+                                ExecResult::Continue => continue,
+                            }
+                        }
+                    }
+                    Value::Text(text) => {
+                        for ch in text.chars() {
+                            self.env.enter_scope();
+                            self.env
+                                .define(name.clone(), Value::Text(ch.to_string()), false);
+                            let step = self.eval_stmt(body);
+                            self.env.exit_scope();
+                            match step? {
+                                ExecResult::Value(v) => last = v,
+                                ExecResult::Return(v) => return Ok(ExecResult::Return(v)),
+                                ExecResult::Break => break,
+                                ExecResult::Continue => continue,
+                            }
+                        }
+                    }
+                    Value::Range {
+                        start,
+                        end,
+                        inclusive,
+                    } => {
+                        let end_bound = if inclusive { end + 1 } else { end };
+                        for n in start..end_bound {
+                            self.env.enter_scope();
+                            self.env
+                                .define(name.clone(), Value::Number(n as f64), false);
+                            let step = self.eval_stmt(body);
+                            self.env.exit_scope();
+                            match step? {
+                                ExecResult::Value(v) => last = v,
+                                ExecResult::Return(v) => return Ok(ExecResult::Return(v)),
+                                ExecResult::Break => break,
+                                ExecResult::Continue => continue,
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(InterpreterError::runtime(
+                            "for-loop iterable must be an array, string, or numeric range",
+                        ));
+                    }
+                }
+                Ok(ExecResult::Value(last))
+            }
+            Stmt::Break => Ok(ExecResult::Break),
+            Stmt::Continue => Ok(ExecResult::Continue),
             Stmt::Expr(expr) => Ok(ExecResult::Value(self.eval_expr(expr)?)),
         }
     }
@@ -170,6 +245,8 @@ impl Interpreter {
             match self.eval_stmt(stmt)? {
                 ExecResult::Value(v) => last = v,
                 ExecResult::Return(v) => return Ok(ExecResult::Return(v)),
+                ExecResult::Break => return Ok(ExecResult::Break),
+                ExecResult::Continue => return Ok(ExecResult::Continue),
             }
         }
         Ok(ExecResult::Value(last))
@@ -209,6 +286,23 @@ impl Interpreter {
                 let target = self.eval_expr(target)?;
                 let index = self.eval_expr(index)?;
                 self.eval_index(target, index)
+            }
+            Expr::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let start = self.eval_expr(start)?.as_number().ok_or_else(|| {
+                    InterpreterError::runtime("range start must evaluate to a number")
+                })? as i64;
+                let end = self.eval_expr(end)?.as_number().ok_or_else(|| {
+                    InterpreterError::runtime("range end must evaluate to a number")
+                })? as i64;
+                Ok(Value::Range {
+                    start,
+                    end,
+                    inclusive: *inclusive,
+                })
             }
         }
     }
@@ -264,6 +358,14 @@ impl Interpreter {
 
         let result = match self.eval_block(&def.body)? {
             ExecResult::Value(v) | ExecResult::Return(v) => v,
+            ExecResult::Break => {
+                return Err(InterpreterError::runtime("`break` used outside of a loop"))
+            }
+            ExecResult::Continue => {
+                return Err(InterpreterError::runtime(
+                    "`continue` used outside of a loop",
+                ))
+            }
         };
         self.env.exit_scope();
         Ok(result)
@@ -431,5 +533,43 @@ mod tests {
             )
             .expect("evaluation should succeed");
         assert_eq!(out, Value::Number(21.0));
+    }
+
+    #[test]
+    fn supports_for_loops_with_break_and_continue() {
+        let mut interpreter = Interpreter::new();
+        let out = interpreter
+            .eval_program(
+                "var sum = 0; for x in [1,2,3,4,5] { if x == 3 { continue; } if x == 5 { break; } sum += x; } sum",
+            )
+            .expect("evaluation should succeed");
+        assert_eq!(out, Value::Number(7.0));
+    }
+
+    #[test]
+    fn supports_for_loops_over_strings() {
+        let mut interpreter = Interpreter::new();
+        let out = interpreter
+            .eval_program("var count = 0; for ch in \"abc\" { count += 1; } count")
+            .expect("evaluation should succeed");
+        assert_eq!(out, Value::Number(3.0));
+    }
+
+    #[test]
+    fn supports_for_loops_over_exclusive_numeric_ranges() {
+        let mut interpreter = Interpreter::new();
+        let out = interpreter
+            .eval_program("var sum = 0; for i in 0..5 { sum += i; } sum")
+            .expect("evaluation should succeed");
+        assert_eq!(out, Value::Number(10.0));
+    }
+
+    #[test]
+    fn supports_for_loops_over_inclusive_numeric_ranges() {
+        let mut interpreter = Interpreter::new();
+        let out = interpreter
+            .eval_program("var sum = 0; for i in 1..=4 { sum += i; } sum")
+            .expect("evaluation should succeed");
+        assert_eq!(out, Value::Number(10.0));
     }
 }
