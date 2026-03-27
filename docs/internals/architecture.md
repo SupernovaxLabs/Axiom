@@ -1,0 +1,3 @@
+# Architecture
+
+Bootstrap placeholder.

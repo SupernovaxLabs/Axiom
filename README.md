@@ -41,6 +41,22 @@ impl Vec3 {
 
 ---
 
+
+## Bootstrap Status (Rust-first)
+
+The repository now includes a **Rust bootstrap workspace** that mirrors the planned Axiom compiler/runtime/std layout from the design docs.
+
+- Bootstrap source files currently use `.rs` (not `.ax`)
+- Workspace members: `compiler/`, `runtime/`, `std/`
+- Includes module skeletons for lexer, parser, type checker, borrow checker, IR, optimizer, codegen, linker, driver, and utility layers
+- Pre-created the broader documentation/test/tooling/examples tree from `docs/agent/PROJECT_STRUCTURE.md` with Rust bootstrap placeholders
+
+Run the bootstrap compiler placeholder:
+
+```bash
+cargo run -p axiom-compiler
+```
+
 ## Why Axiom?
 
 | Feature | Description |
@@ -62,27 +78,27 @@ This package contains **14,500+ lines** of comprehensive documentation:
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `LANGUAGE_SPEC.md` | 1,578 | Complete language specification |
-| `SYNTAX_REFERENCE.md` | 992 | Quick syntax reference |
-| `STDLIB_SPEC.md` | 931 | Standard library API |
-| `GETTING_STARTED.md` | 857 | Developer onboarding guide |
-| `ROADMAP.md` | 1,033 | 3-4 year development plan |
+| `docs/agent/LANGUAGE_SPEC.md` | 1,578 | Complete language specification |
+| `docs/agent/SYNTAX_REFERENCE.md` | 992 | Quick syntax reference |
+| `docs/agent/STDLIB_SPEC.md` | 931 | Standard library API |
+| `docs/agent/GETTING_STARTED.md` | 857 | Developer onboarding guide |
+| `docs/agent/ROADMAP.md` | 1,033 | 3-4 year development plan |
 
 ### Technical Documentation
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `TECHNICAL_IMPLEMENTATION.md` | 3,288 | Compiler, lexer, parser implementation |
-| `TECHNICAL_IMPLEMENTATION_PART2.md` | 1,798 | Type checker, borrow checker, IR |
-| `TECHNICAL_IMPLEMENTATION_PART3.md` | 2,246 | Binary generation, linker, interpreter |
-| `COMPILER_ARCHITECTURE.md` | 861 | Compiler architecture overview |
+| `docs/agent/TECHNICAL_IMPLEMENTATION.md` | 3,288 | Compiler, lexer, parser implementation |
+| `docs/agent/TECHNICAL_IMPLEMENTATION_PART2.md` | 1,798 | Type checker, borrow checker, IR |
+| `docs/agent/TECHNICAL_IMPLEMENTATION_PART3.md` | 2,246 | Binary generation, linker, interpreter |
+| `docs/agent/COMPILER_ARCHITECTURE.md` | 861 | Compiler architecture overview |
 
 ### Project Documentation
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `PROJECT_STRUCTURE.md` | 455 | Complete file organization |
-| `AGENTS.md` | 489 | AI agent contribution guidelines |
+| `docs/agent/PROJECT_STRUCTURE.md` | 455 | Complete file organization |
+| `docs/agent/AGENTS.md` | 489 | AI agent contribution guidelines |
 
 ---
 

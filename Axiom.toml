@@ -1,0 +1,8 @@
+[project]
+name = "axiom"
+version = "0.1.0-bootstrap"
+description = "Bootstrap layout for the Axiom language toolchain"
+
+[bootstrap]
+implementation_language = "rust"
+source_extension = ".rs"

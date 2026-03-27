@@ -1,0 +1,3 @@
+# Contributing
+
+Bootstrap placeholder.
