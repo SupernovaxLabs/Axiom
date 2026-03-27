@@ -41,6 +41,22 @@ impl Vec3 {
 
 ---
 
+
+## Bootstrap Status (Rust-first)
+
+The repository now includes a **Rust bootstrap workspace** that mirrors the planned Axiom compiler/runtime/std layout from the design docs.
+
+- Bootstrap source files currently use `.rs` (not `.ax`)
+- Workspace members: `compiler/`, `runtime/`, `std/`
+- Includes module skeletons for lexer, parser, type checker, borrow checker, IR, optimizer, codegen, linker, driver, and utility layers
+- Pre-created the broader documentation/test/tooling/examples tree from `PROJECT_STRUCTURE.md` with Rust bootstrap placeholders
+
+Run the bootstrap compiler placeholder:
+
+```bash
+cargo run -p axiom-compiler
+```
+
 ## Why Axiom?
 
 | Feature | Description |
