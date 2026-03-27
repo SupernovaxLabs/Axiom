@@ -3,6 +3,8 @@ members = [
   "compiler",
   "runtime",
   "std",
+  "interpreter",
+  "cli",
 ]
 resolver = "2"
 

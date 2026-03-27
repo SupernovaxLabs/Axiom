@@ -1,0 +1,8 @@
+[package]
+name = "axiom-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axiom-interpreter = { path = "../interpreter" }
