@@ -337,44 +337,88 @@ axiom/
 
 ### Installation
 
-```bash
-# Linux/macOS
-curl -fsSL https://axiom-lang.org/install.sh | sh
+**Windows** — run this in PowerShell (no Rust or build tools required):
 
-# Build from source
-git clone https://github.com/axiom-lang/axiom.git
-cd axiom
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
-sudo make install
+```powershell
+iwr -useb https://raw.githubusercontent.com/SupernovaxLabs/Axiom/main/install.ps1 | iex
 ```
 
-### Create a Project
+This downloads the latest pre-built `axiom-cli.exe` and `axiom-interpreter.exe` from [GitHub Releases](https://github.com/SupernovaxLabs/Axiom/releases/latest) and installs them to `%LOCALAPPDATA%\Axiom\bin`, then adds that directory to your user `PATH` automatically.
+
+**Linux / macOS** — run this in your terminal:
 
 ```bash
-# Create new project
-axm new my_project
-cd my_project
-
-# Build
-axm build
-
-# Run
-axm run
-
-# Test
-axm test
+curl -fsSL https://raw.githubusercontent.com/SupernovaxLabs/Axiom/main/install.sh | bash
 ```
+
+After installation, open a **new terminal** and verify:
+
+```bash
+axiom version
+```
+
+#### Install a specific version
+
+```powershell
+# Windows — install a specific release tag
+iwr -useb https://raw.githubusercontent.com/SupernovaxLabs/Axiom/main/install.ps1 | iex
+# or with a specific version:
+& ([scriptblock]::Create((iwr -useb https://raw.githubusercontent.com/SupernovaxLabs/Axiom/main/install.ps1))) -Version build-5
+```
+
+```bash
+# Linux/macOS — install a specific release tag
+AXIOM_VERSION=build-5 curl -fsSL https://raw.githubusercontent.com/SupernovaxLabs/Axiom/main/install.sh | bash
+```
+
+---
+
+### Running Axiom Scripts
+
+Once installed, use the `axiom` command to run `.ax` files:
+
+```bash
+axiom run hello.ax
+```
+
+**Hello World** (`hello.ax`):
+
+```axiom
+println("Hello, Axiom!")
+```
+
+**Fibonacci** (`fib.ax`):
+
+```axiom
+fn fib(n) {
+    if n <= 1 { return n; }
+    return fib(n - 1) + fib(n - 2);
+}
+
+fib(10)
+```
+
+**Arrays and loops** (`arrays.ax`):
+
+```axiom
+var numbers = [1, 2, 3, 4, 5]
+var sum = 0
+var i = 0
+while i < len(numbers) {
+    sum += numbers[i]
+    i += 1
+}
+sum
+```
+
+More examples are in the [`examples/ax/`](examples/ax/) directory.
 
 ---
 
 ## Community
 
-- **GitHub**: https://github.com/axiom-lang/axiom
-- **Discord**: https://discord.gg/axiom-lang
-- **Forum**: https://forum.axiom-lang.org
-- **Documentation**: https://axiom-lang.org/docs
+- **GitHub**: https://github.com/SupernovaxLabs/Axiom
+- **Releases**: https://github.com/SupernovaxLabs/Axiom/releases
 
 ---
 
