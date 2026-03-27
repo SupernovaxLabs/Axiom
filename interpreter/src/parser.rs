@@ -28,6 +28,13 @@ pub enum Stmt {
         condition: Expr,
         body: Box<Stmt>,
     },
+    For {
+        name: String,
+        iter: Expr,
+        body: Box<Stmt>,
+    },
+    Break,
+    Continue,
     Expr(Expr),
 }
 
@@ -66,6 +73,11 @@ pub enum Expr {
         target: Box<Expr>,
         index: Box<Expr>,
     },
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        inclusive: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +112,10 @@ enum Token {
     If,
     Else,
     While,
+    For,
+    In,
+    Break,
+    Continue,
     True,
     False,
     Nil,
@@ -126,6 +142,8 @@ enum Token {
     LessEqual,
     AndAnd,
     OrOr,
+    DotDot,
+    DotDotEqual,
     Semi,
     Comma,
     LParen,
@@ -286,6 +304,21 @@ fn lex(src: &str) -> Result<Vec<Token>, InterpreterError> {
                     return Err(InterpreterError::parse("single `|` is not supported"));
                 }
             }
+            '.' => {
+                i += 1;
+                if chars.get(i) != Some(&'.') {
+                    return Err(InterpreterError::parse(
+                        "single `.` is not supported in this interpreter",
+                    ));
+                }
+                i += 1;
+                if chars.get(i) == Some(&'=') {
+                    i += 1;
+                    Token::DotDotEqual
+                } else {
+                    Token::DotDot
+                }
+            }
             ';' => {
                 i += 1;
                 Token::Semi
@@ -334,8 +367,21 @@ fn lex(src: &str) -> Result<Vec<Token>, InterpreterError> {
             c if c.is_ascii_digit() => {
                 let start = i;
                 i += 1;
-                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
-                    i += 1;
+                let mut seen_dot = false;
+                while i < chars.len() {
+                    if chars[i].is_ascii_digit() {
+                        i += 1;
+                        continue;
+                    }
+                    if chars[i] == '.'
+                        && !seen_dot
+                        && chars.get(i + 1).is_some_and(|next| next.is_ascii_digit())
+                    {
+                        seen_dot = true;
+                        i += 1;
+                        continue;
+                    }
+                    break;
                 }
                 let value: String = chars[start..i].iter().collect();
                 let number = value
@@ -358,6 +404,10 @@ fn lex(src: &str) -> Result<Vec<Token>, InterpreterError> {
                     "if" => Token::If,
                     "else" => Token::Else,
                     "while" => Token::While,
+                    "for" => Token::For,
+                    "in" => Token::In,
+                    "break" => Token::Break,
+                    "continue" => Token::Continue,
                     "true" => Token::True,
                     "false" => Token::False,
                     "nil" => Token::Nil,
@@ -407,6 +457,14 @@ impl Parser {
             self.parse_if()?
         } else if self.matches(&Token::While) {
             self.parse_while()?
+        } else if self.matches(&Token::For) {
+            self.parse_for()?
+        } else if self.matches(&Token::Break) {
+            self.pos += 1;
+            Stmt::Break
+        } else if self.matches(&Token::Continue) {
+            self.pos += 1;
+            Stmt::Continue
         } else if self.matches(&Token::LBrace) {
             self.parse_block()?
         } else {
@@ -490,6 +548,15 @@ impl Parser {
         Ok(Stmt::While { condition, body })
     }
 
+    fn parse_for(&mut self) -> Result<Stmt, InterpreterError> {
+        self.expect(&Token::For)?;
+        let name = self.expect_ident()?;
+        self.expect(&Token::In)?;
+        let iter = self.parse_expr()?;
+        let body = Box::new(self.parse_stmt()?);
+        Ok(Stmt::For { name, iter, body })
+    }
+
     fn parse_block(&mut self) -> Result<Stmt, InterpreterError> {
         self.expect(&Token::LBrace)?;
         let mut body = Vec::new();
@@ -536,7 +603,23 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, InterpreterError> {
-        self.parse_or()
+        self.parse_range()
+    }
+
+    fn parse_range(&mut self) -> Result<Expr, InterpreterError> {
+        let left = self.parse_or()?;
+        if self.matches(&Token::DotDot) || self.matches(&Token::DotDotEqual) {
+            let inclusive = self.matches(&Token::DotDotEqual);
+            self.pos += 1;
+            let right = self.parse_or()?;
+            Ok(Expr::Range {
+                start: Box::new(left),
+                end: Box::new(right),
+                inclusive,
+            })
+        } else {
+            Ok(left)
+        }
     }
 
     fn parse_or(&mut self) -> Result<Expr, InterpreterError> {
@@ -799,6 +882,10 @@ impl Parser {
                 | (If, If)
                 | (Else, Else)
                 | (While, While)
+                | (For, For)
+                | (In, In)
+                | (Break, Break)
+                | (Continue, Continue)
                 | (True, True)
                 | (False, False)
                 | (Nil, Nil)
@@ -822,6 +909,8 @@ impl Parser {
                 | (LessEqual, LessEqual)
                 | (AndAnd, AndAnd)
                 | (OrOr, OrOr)
+                | (DotDot, DotDot)
+                | (DotDotEqual, DotDotEqual)
                 | (Semi, Semi)
                 | (Comma, Comma)
                 | (LParen, LParen)
