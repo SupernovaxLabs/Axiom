@@ -9,6 +9,7 @@ pub enum Stmt {
     },
     Assign {
         name: String,
+        op: AssignOp,
         value: Expr,
     },
     Fn {
@@ -30,12 +31,23 @@ pub enum Stmt {
     Expr(Expr),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignOp {
+    Set,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(f64),
     Bool(bool),
     Text(String),
     Nil,
+    Array(Vec<Expr>),
     Ident(String),
     Unary {
         op: UnaryOp,
@@ -49,6 +61,10 @@ pub enum Expr {
     Call {
         name: String,
         args: Vec<Expr>,
+    },
+    Index {
+        target: Box<Expr>,
+        index: Box<Expr>,
     },
 }
 
@@ -64,6 +80,7 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Mod,
     Eq,
     Ne,
     Gt,
@@ -93,6 +110,12 @@ enum Token {
     Minus,
     Star,
     Slash,
+    Percent,
+    PlusEqual,
+    MinusEqual,
+    StarEqual,
+    SlashEqual,
+    PercentEqual,
     Bang,
     BangEqual,
     Equal,
@@ -109,12 +132,18 @@ enum Token {
     RParen,
     LBrace,
     RBrace,
+    LBracket,
+    RBracket,
     Eof,
 }
 
 pub fn parse_program(src: &str) -> Result<Vec<Stmt>, InterpreterError> {
     let tokens = lex(src)?;
     Parser::new(tokens).parse_program()
+}
+
+pub fn lex_tokens(src: &str) -> Result<Vec<String>, InterpreterError> {
+    Ok(lex(src)?.into_iter().map(|t| format!("{t:?}")).collect())
 }
 
 fn lex(src: &str) -> Result<Vec<Token>, InterpreterError> {
@@ -137,22 +166,71 @@ fn lex(src: &str) -> Result<Vec<Token>, InterpreterError> {
             continue;
         }
 
+        if ch == '/' && chars.get(i + 1) == Some(&'*') {
+            i += 2;
+            let mut depth = 1usize;
+            while i < chars.len() && depth > 0 {
+                if chars[i] == '/' && chars.get(i + 1) == Some(&'*') {
+                    depth += 1;
+                    i += 2;
+                } else if chars[i] == '*' && chars.get(i + 1) == Some(&'/') {
+                    depth -= 1;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            if depth != 0 {
+                return Err(InterpreterError::parse("unterminated block comment"));
+            }
+            continue;
+        }
+
         let token = match ch {
             '+' => {
                 i += 1;
-                Token::Plus
+                if chars.get(i) == Some(&'=') {
+                    i += 1;
+                    Token::PlusEqual
+                } else {
+                    Token::Plus
+                }
             }
             '-' => {
                 i += 1;
-                Token::Minus
+                if chars.get(i) == Some(&'=') {
+                    i += 1;
+                    Token::MinusEqual
+                } else {
+                    Token::Minus
+                }
             }
             '*' => {
                 i += 1;
-                Token::Star
+                if chars.get(i) == Some(&'=') {
+                    i += 1;
+                    Token::StarEqual
+                } else {
+                    Token::Star
+                }
             }
             '/' => {
                 i += 1;
-                Token::Slash
+                if chars.get(i) == Some(&'=') {
+                    i += 1;
+                    Token::SlashEqual
+                } else {
+                    Token::Slash
+                }
+            }
+            '%' => {
+                i += 1;
+                if chars.get(i) == Some(&'=') {
+                    i += 1;
+                    Token::PercentEqual
+                } else {
+                    Token::Percent
+                }
             }
             '!' => {
                 i += 1;
@@ -231,6 +309,14 @@ fn lex(src: &str) -> Result<Vec<Token>, InterpreterError> {
             '}' => {
                 i += 1;
                 Token::RBrace
+            }
+            '[' => {
+                i += 1;
+                Token::LBracket
+            }
+            ']' => {
+                i += 1;
+                Token::RBracket
             }
             '"' => {
                 i += 1;
@@ -418,15 +504,34 @@ impl Parser {
     }
 
     fn parse_expr_or_assign(&mut self) -> Result<Stmt, InterpreterError> {
-        if let (Some(Token::Ident(name)), Some(Token::Equal)) =
-            (self.tokens.get(self.pos), self.tokens.get(self.pos + 1))
-        {
-            let name = name.clone();
+        if let Some((name, op)) = self.peek_assignment() {
             self.pos += 2;
             let value = self.parse_expr()?;
-            Ok(Stmt::Assign { name, value })
+            Ok(Stmt::Assign { name, op, value })
         } else {
             Ok(Stmt::Expr(self.parse_expr()?))
+        }
+    }
+
+    fn peek_assignment(&self) -> Option<(String, AssignOp)> {
+        match (self.tokens.get(self.pos), self.tokens.get(self.pos + 1)) {
+            (Some(Token::Ident(name)), Some(Token::Equal)) => Some((name.clone(), AssignOp::Set)),
+            (Some(Token::Ident(name)), Some(Token::PlusEqual)) => {
+                Some((name.clone(), AssignOp::Add))
+            }
+            (Some(Token::Ident(name)), Some(Token::MinusEqual)) => {
+                Some((name.clone(), AssignOp::Sub))
+            }
+            (Some(Token::Ident(name)), Some(Token::StarEqual)) => {
+                Some((name.clone(), AssignOp::Mul))
+            }
+            (Some(Token::Ident(name)), Some(Token::SlashEqual)) => {
+                Some((name.clone(), AssignOp::Div))
+            }
+            (Some(Token::Ident(name)), Some(Token::PercentEqual)) => {
+                Some((name.clone(), AssignOp::Mod))
+            }
+            _ => None,
         }
     }
 
@@ -536,6 +641,8 @@ impl Parser {
                 BinaryOp::Mul
             } else if self.matches(&Token::Slash) {
                 BinaryOp::Div
+            } else if self.matches(&Token::Percent) {
+                BinaryOp::Mod
             } else {
                 break;
             };
@@ -565,7 +672,27 @@ impl Parser {
                 expr: Box::new(self.parse_unary()?),
             });
         }
-        self.parse_primary()
+        self.parse_postfix()
+    }
+
+    fn parse_postfix(&mut self) -> Result<Expr, InterpreterError> {
+        let mut expr = self.parse_primary()?;
+
+        loop {
+            if self.matches(&Token::LBracket) {
+                self.pos += 1;
+                let index = self.parse_expr()?;
+                self.expect(&Token::RBracket)?;
+                expr = Expr::Index {
+                    target: Box::new(expr),
+                    index: Box::new(index),
+                };
+                continue;
+            }
+            break;
+        }
+
+        Ok(expr)
     }
 
     fn parse_primary(&mut self) -> Result<Expr, InterpreterError> {
@@ -589,6 +716,22 @@ impl Parser {
             Token::Text(s) => {
                 self.pos += 1;
                 Ok(Expr::Text(s))
+            }
+            Token::LBracket => {
+                self.pos += 1;
+                let mut items = Vec::new();
+                if !self.matches(&Token::RBracket) {
+                    loop {
+                        items.push(self.parse_expr()?);
+                        if self.matches(&Token::Comma) {
+                            self.pos += 1;
+                            continue;
+                        }
+                        break;
+                    }
+                }
+                self.expect(&Token::RBracket)?;
+                Ok(Expr::Array(items))
             }
             Token::Ident(name) => {
                 self.pos += 1;
@@ -663,6 +806,12 @@ impl Parser {
                 | (Minus, Minus)
                 | (Star, Star)
                 | (Slash, Slash)
+                | (Percent, Percent)
+                | (PlusEqual, PlusEqual)
+                | (MinusEqual, MinusEqual)
+                | (StarEqual, StarEqual)
+                | (SlashEqual, SlashEqual)
+                | (PercentEqual, PercentEqual)
                 | (Bang, Bang)
                 | (BangEqual, BangEqual)
                 | (Equal, Equal)
@@ -679,6 +828,8 @@ impl Parser {
                 | (RParen, RParen)
                 | (LBrace, LBrace)
                 | (RBrace, RBrace)
+                | (LBracket, LBracket)
+                | (RBracket, RBracket)
                 | (Eof, Eof)
         )
     }

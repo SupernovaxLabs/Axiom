@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::builtins;
 use crate::env::Env;
-use crate::parser::{parse_program, BinaryOp, Expr, Stmt, UnaryOp};
+use crate::parser::{parse_program, AssignOp, BinaryOp, Expr, Stmt, UnaryOp};
 use crate::value::Value;
 
 #[derive(Debug, Error)]
@@ -79,10 +79,10 @@ impl Interpreter {
                 self.env.define(name.clone(), value.clone(), *mutable);
                 Ok(ExecResult::Value(value))
             }
-            Stmt::Assign { name, value } => {
+            Stmt::Assign { name, op, value } => {
                 let value = self.eval_expr(value)?;
-                self.env.assign(name, value.clone())?;
-                Ok(ExecResult::Value(value))
+                let final_value = self.apply_assignment(name, op, value)?;
+                Ok(ExecResult::Value(final_value))
             }
             Stmt::Fn { name, params, body } => {
                 self.functions.insert(
@@ -128,6 +128,42 @@ impl Interpreter {
         }
     }
 
+    fn apply_assignment(
+        &mut self,
+        name: &str,
+        op: &AssignOp,
+        value: Value,
+    ) -> Result<Value, InterpreterError> {
+        let result = match op {
+            AssignOp::Set => value,
+            AssignOp::Add => {
+                self.eval_materialized_binary(&BinaryOp::Add, self.read_variable(name)?, value)?
+            }
+            AssignOp::Sub => {
+                self.eval_materialized_binary(&BinaryOp::Sub, self.read_variable(name)?, value)?
+            }
+            AssignOp::Mul => {
+                self.eval_materialized_binary(&BinaryOp::Mul, self.read_variable(name)?, value)?
+            }
+            AssignOp::Div => {
+                self.eval_materialized_binary(&BinaryOp::Div, self.read_variable(name)?, value)?
+            }
+            AssignOp::Mod => {
+                self.eval_materialized_binary(&BinaryOp::Mod, self.read_variable(name)?, value)?
+            }
+        };
+
+        self.env.assign(name, result.clone())?;
+        Ok(result)
+    }
+
+    fn read_variable(&self, name: &str) -> Result<Value, InterpreterError> {
+        self.env
+            .get(name)
+            .cloned()
+            .ok_or_else(|| InterpreterError::runtime(format!("undefined variable `{name}`")))
+    }
+
     fn eval_block(&mut self, stmts: &[Stmt]) -> Result<ExecResult, InterpreterError> {
         let mut last = Value::Nil;
         for stmt in stmts {
@@ -145,6 +181,13 @@ impl Interpreter {
             Expr::Bool(b) => Ok(Value::Bool(*b)),
             Expr::Text(s) => Ok(Value::Text(s.clone())),
             Expr::Nil => Ok(Value::Nil),
+            Expr::Array(items) => {
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    out.push(self.eval_expr(item)?);
+                }
+                Ok(Value::Array(out))
+            }
             Expr::Ident(name) => {
                 self.env.get(name).cloned().ok_or_else(|| {
                     InterpreterError::runtime(format!("undefined variable `{name}`"))
@@ -162,6 +205,33 @@ impl Interpreter {
             }
             Expr::Binary { left, op, right } => self.eval_binary(op, left, right),
             Expr::Call { name, args } => self.eval_call(name, args),
+            Expr::Index { target, index } => {
+                let target = self.eval_expr(target)?;
+                let index = self.eval_expr(index)?;
+                self.eval_index(target, index)
+            }
+        }
+    }
+
+    fn eval_index(&self, target: Value, index: Value) -> Result<Value, InterpreterError> {
+        let idx = index
+            .as_number()
+            .ok_or_else(|| InterpreterError::runtime("index must be numeric"))?
+            as usize;
+        match target {
+            Value::Array(items) => items.get(idx).cloned().ok_or_else(|| {
+                InterpreterError::runtime(format!("array index out of bounds: {idx}"))
+            }),
+            Value::Text(s) => s
+                .chars()
+                .nth(idx)
+                .map(|ch| Value::Text(ch.to_string()))
+                .ok_or_else(|| {
+                    InterpreterError::runtime(format!("string index out of bounds: {idx}"))
+                }),
+            _ => Err(InterpreterError::runtime(
+                "indexing requires array or string",
+            )),
         }
     }
 
@@ -245,6 +315,7 @@ impl Interpreter {
             BinaryOp::Sub => num_op("-", left, right, |a, b| a - b),
             BinaryOp::Mul => num_op("*", left, right, |a, b| a * b),
             BinaryOp::Div => num_op("/", left, right, |a, b| a / b),
+            BinaryOp::Mod => num_op("%", left, right, |a, b| a % b),
             BinaryOp::Eq => Ok(Value::Bool(left == right)),
             BinaryOp::Ne => Ok(Value::Bool(left != right)),
             BinaryOp::Gt => cmp_op(">", left, right, |a, b| a > b),
@@ -298,12 +369,21 @@ mod tests {
     }
 
     #[test]
-    fn concatenates_text() {
+    fn supports_arrays_indexing_and_len() {
         let mut interpreter = Interpreter::new();
         let out = interpreter
-            .eval_program("let name = \"Axiom\"; name + \" Lang\"")
+            .eval_program("let arr = [10, 20, 30]; arr[1] + len(arr)")
             .expect("evaluation should succeed");
-        assert_eq!(out, Value::Text("Axiom Lang".to_string()));
+        assert_eq!(out, Value::Number(23.0));
+    }
+
+    #[test]
+    fn supports_compound_assignment() {
+        let mut interpreter = Interpreter::new();
+        let out = interpreter
+            .eval_program("var x = 20; x %= 6; x += 10; x")
+            .expect("evaluation should succeed");
+        assert_eq!(out, Value::Number(12.0));
     }
 
     #[test]
@@ -331,6 +411,15 @@ mod tests {
             .eval_program("let x = 1; x = 2;")
             .expect_err("should reject assignment to let");
         assert!(err.to_string().contains("immutable"));
+    }
+
+    #[test]
+    fn supports_block_comments() {
+        let mut interpreter = Interpreter::new();
+        let out = interpreter
+            .eval_program("var x = 1; /* outer /* inner */ end */ x += 4; x")
+            .expect("evaluation should succeed");
+        assert_eq!(out, Value::Number(5.0));
     }
 
     #[test]
